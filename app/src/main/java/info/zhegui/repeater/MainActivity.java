@@ -1,22 +1,26 @@
 package info.zhegui.repeater;
 
-import java.util.Locale;
-
-import android.support.v7.app.AppCompatActivity;
-import android.support.v7.app.ActionBar;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentManager;
-import android.support.v4.app.FragmentTransaction;
 import android.support.v4.app.FragmentPagerAdapter;
-import android.os.Bundle;
+import android.support.v4.app.FragmentTransaction;
 import android.support.v4.view.ViewPager;
-import android.view.Gravity;
+import android.support.v7.app.ActionBar;
+import android.support.v7.app.AppCompatActivity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ListView;
 import android.widget.TextView;
+
+import java.io.File;
+import java.net.URI;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements ActionBar.TabListener {
 
@@ -34,6 +38,7 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
      * The {@link ViewPager} that will host the section contents.
      */
     ViewPager mViewPager;
+    private static final int REQUEST_GET_CONTENT = 101;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -127,13 +132,20 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         public Fragment getItem(int position) {
             // getItem is called to instantiate the fragment for the given page.
             // Return a PlaceholderFragment (defined as a static inner class below).
-            return PlaceholderFragment.newInstance(position + 1);
+            switch (position) {
+                case 0:
+                    return FragmentList.newInstance();
+                case 1:
+                    return FragmentPlay.newInstance();
+            }
+
+            return null;
         }
 
         @Override
         public int getCount() {
             // Show 3 total pages.
-            return 3;
+            return 2;
         }
 
         @Override
@@ -141,45 +153,86 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
             Locale l = Locale.getDefault();
             switch (position) {
                 case 0:
-                    return getString(R.string.title_section1).toUpperCase(l);
+                    return "List";
                 case 1:
-                    return getString(R.string.title_section2).toUpperCase(l);
-                case 2:
-                    return getString(R.string.title_section3).toUpperCase(l);
+                    return "play";
             }
             return null;
         }
     }
 
-    /**
-     * A placeholder fragment containing a simple view.
-     */
-    public static class PlaceholderFragment extends Fragment {
-        /**
-         * The fragment argument representing the section number for this
-         * fragment.
-         */
-        private static final String ARG_SECTION_NUMBER = "section_number";
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
+        if (requestCode == REQUEST_GET_CONTENT) {
+            if (resultCode == RESULT_OK) {
+                Uri uri = intent.getData();
+                String type = intent.getType();
+//                LogHelper.i(TAG,"Pick completed: "+ uri + " "+type);
+                if (uri != null) {
+                    String path = uri.toString();
+                    if (path.toLowerCase().startsWith("file://")) {
+                        // Selected file/directory path is below
+                        path = (new File(URI.create(path))).getAbsolutePath();
+                    }
 
+                }
+            }
+
+        }
+    }
+
+    public static class FragmentList extends Fragment {
         /**
          * Returns a new instance of this fragment for the given section
          * number.
          */
-        public static PlaceholderFragment newInstance(int sectionNumber) {
-            PlaceholderFragment fragment = new PlaceholderFragment();
+        public static FragmentList newInstance() {
+            FragmentList fragment = new FragmentList();
             Bundle args = new Bundle();
-            args.putInt(ARG_SECTION_NUMBER, sectionNumber);
             fragment.setArguments(args);
             return fragment;
         }
 
-        public PlaceholderFragment() {
+        public FragmentList() {
         }
 
         @Override
         public View onCreateView(LayoutInflater inflater, ViewGroup container,
                                  Bundle savedInstanceState) {
-            View rootView = inflater.inflate(R.layout.fragment_main, container, false);
+            View rootView = inflater.inflate(R.layout.fragment_list, container, false);
+            TextView tvDir = (TextView) rootView.findViewById(R.id.tv_dir);
+            ListView listView = (ListView) rootView.findViewById(R.id.listview);
+            tvDir.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    //write your own tiny file explorer
+                }
+            });
+            return rootView;
+        }
+    }
+
+
+    public static class FragmentPlay extends Fragment {
+
+        /**
+         * Returns a new instance of this fragment for the given section
+         * number.
+         */
+        public static FragmentPlay newInstance() {
+            FragmentPlay fragment = new FragmentPlay();
+            Bundle args = new Bundle();
+            fragment.setArguments(args);
+            return fragment;
+        }
+
+        public FragmentPlay() {
+        }
+
+        @Override
+        public View onCreateView(LayoutInflater inflater, ViewGroup container,
+                                 Bundle savedInstanceState) {
+            View rootView = inflater.inflate(R.layout.fragment_play, container, false);
             return rootView;
         }
     }
