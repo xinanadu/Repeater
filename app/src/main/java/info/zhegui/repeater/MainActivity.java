@@ -3,6 +3,8 @@ package info.zhegui.repeater;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -27,13 +29,18 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.ListView;
+import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.File;
 import java.net.URI;
 import java.util.Comparator;
 import java.util.Locale;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class MainActivity extends AppCompatActivity implements ActionBar.TabListener {
 
@@ -53,6 +60,8 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
     ViewPager mViewPager;
     private static final int REQUEST_GET_CONTENT = 101;
     private static SharedPreferences prefs;
+    private static FragmentList fragmentList;
+    private static FragmentPlay fragmentPlay;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -154,9 +163,15 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
             // Return a PlaceholderFragment (defined as a static inner class below).
             switch (position) {
                 case 0:
-                    return FragmentList.newInstance();
+                    if (fragmentList == null) {
+                        fragmentList = FragmentList.newInstance();
+                    }
+                    return fragmentList;
                 case 1:
-                    return FragmentPlay.newInstance();
+                    if (fragmentPlay == null) {
+                        fragmentPlay = FragmentPlay.newInstance();
+                    }
+                    return fragmentPlay;
             }
 
             return null;
@@ -202,7 +217,7 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
     }
 
     public static class FragmentList extends Fragment {
-        private final String LAST_PATH = "last_path", UPWARD = ".";
+        private final String LAST_PATH = "last_path", UPWARD = "..";
         private final int WHAT_LOADING = 101, WHAT_DONE = 102;
         private ArrayAdapter<String> adapter;
         private TextView tvDir, tvCount, tvLoading;
@@ -210,6 +225,7 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         private boolean isLoading = true;
         private String newPath = File.separator;
         private Thread threadLoading;
+        private MainActivity mActivity;
 
         /**
          * Returns a new instance of this fragment for the given section
@@ -228,7 +244,7 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         private Handler mHandler = new Handler() {
             @Override
             public void handleMessage(Message msg) {
-                log("handlerMessage(" + msg + ")");
+//                log("handlerMessage(" + msg + ")");
                 switch (msg.what) {
                     case WHAT_DONE:
                         String[] tempArr = (String[]) msg.obj;
@@ -269,12 +285,18 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
                         for (int i = 0; i < msg.arg1; i++) {
                             strLoading += ".";
                         }
-                        log(strLoading);
+//                        log(strLoading);
                         tvLoading.setText(strLoading);
                         break;
                 }
             }
         };
+
+        @Override
+        public void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            mActivity = (MainActivity) getActivity();
+        }
 
         @Override
         public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -312,8 +334,14 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
                             newPath += File.separator + str;
                         }
                     }
-                    updateDirList();
 
+
+                    if (newPath.toLowerCase().endsWith("mp3")) {
+                        if (fragmentPlay != null)
+                            fragmentPlay.play(newPath);
+                    } else {
+                        updateDirList();
+                    }
                 }
             });
 
@@ -366,34 +394,180 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
             }
             return false;
         }
+
+        private void log(String msg) {
+            mActivity.log(msg);
+        }
     }
 
 
-    public static class FragmentPlay extends Fragment {
+    public static class FragmentPlay extends Fragment implements MediaPlayer.OnPreparedListener, MediaPlayer.OnCompletionListener, MediaPlayer.OnErrorListener {
 
-        /**
-         * Returns a new instance of this fragment for the given section
-         * number.
-         */
+        private MediaPlayer mMediaPlayer = null;
+        private Timer mTimer;
+        private TimerTask mTimerTask;
+        private SeekBar mSeekBar;
+        private TextView tvCurrentTime, tvTotalTime;
+        private Button btnPlay;
+        private final int WHAT_UPDATE_POSITION = 101;
+        private MainActivity mActivity;
+        private String path;
+
+        private Handler mHandler = new Handler() {
+            @Override
+            public void handleMessage(Message msg) {
+//                log("handlerMessage(" + msg + ")");
+                switch (msg.what) {
+                    case WHAT_UPDATE_POSITION:
+                        if (mSeekBar != null && mMediaPlayer != null && mMediaPlayer.isPlaying()) {
+                            mSeekBar.setProgress(mMediaPlayer.getCurrentPosition());
+                            tvCurrentTime.setText(formatTime(mMediaPlayer.getCurrentPosition()));
+                        }
+                        break;
+                }
+            }
+        };
+
         public static FragmentPlay newInstance() {
             FragmentPlay fragment = new FragmentPlay();
             Bundle args = new Bundle();
             fragment.setArguments(args);
+
+
             return fragment;
         }
 
         public FragmentPlay() {
+
+        }
+
+        @Override
+        public void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            mActivity = (MainActivity) getActivity();
+
+            mTimer = new Timer();
+            mTimerTask = new TimerTask() {
+                @Override
+                public void run() {
+                    Message msg = mHandler.obtainMessage(WHAT_UPDATE_POSITION);
+                    msg.sendToTarget();
+                }
+            };
+            mTimer.schedule(mTimerTask, 0, 200);
         }
 
         @Override
         public View onCreateView(LayoutInflater inflater, ViewGroup container,
                                  Bundle savedInstanceState) {
             View rootView = inflater.inflate(R.layout.fragment_play, container, false);
+            mSeekBar = (SeekBar) rootView.findViewById(R.id.seekBar);
+            tvCurrentTime = (TextView) rootView.findViewById(R.id.tv_current_time);
+            tvTotalTime = (TextView) rootView.findViewById(R.id.tv_total_time);
+            btnPlay = (Button) rootView.findViewById(R.id.btn_play);
+            btnPlay.setOnClickListener(new View.OnClickListener() {
+
+                @Override
+                public void onClick(View v) {
+                    if (mMediaPlayer != null) {
+                        if (mMediaPlayer.isPlaying()) {
+                            mMediaPlayer.pause();
+                            btnPlay.setText(R.string.action_play);
+                        } else {
+                            mMediaPlayer.start();
+                            btnPlay.setText(R.string.action_pause);
+                        }
+                    } else {
+                        play(path);
+                        btnPlay.setText(R.string.action_pause);
+                    }
+                }
+            });
             return rootView;
+        }
+
+        public void play(String path) {
+            log("play(" + path + ")");
+            this.path = path;
+            resetViews();
+            if (mMediaPlayer != null) {
+                if (mMediaPlayer.isPlaying()) mMediaPlayer.stop();
+                mMediaPlayer.release();
+            }
+            try {
+                mMediaPlayer = new MediaPlayer();
+                mMediaPlayer.setOnCompletionListener(this);
+                mMediaPlayer.setOnErrorListener(this);
+                mMediaPlayer.setOnPreparedListener(this);
+                mMediaPlayer.setDataSource(path);
+                mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+                mMediaPlayer.prepareAsync();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                log("===>>>>" + e.getMessage());
+            }
+            mActivity.mViewPager.setCurrentItem(1);
+        }
+
+        private void resetViews() {
+            tvCurrentTime.setText(R.string.default_time);
+            tvTotalTime.setText(R.string.default_time);
+            btnPlay.setText(R.string.action_play);
+        }
+
+        @Override
+        public void onDestroy() {
+            super.onDestroy();
+            if (mMediaPlayer != null) {
+                mMediaPlayer.release();
+                mMediaPlayer = null;
+            }
+        }
+
+        private void log(String msg) {
+            mActivity.log(msg);
+        }
+
+        private String formatTime(long mm) {
+            int m = (int) mm / (60000);
+            int s = (int) (mm - m * 60000) / 1000;
+
+            return (m < 10 ? ("0" + m) : m) + ":" + (s < 10 ? ("0" + s) : s);
+//            return getResources().getString(R.string.default_time);
+        }
+
+        @Override
+        public void onCompletion(MediaPlayer mp) {
+            resetViews();
+        }
+
+        @Override
+        public boolean onError(MediaPlayer mp, int what, int extra) {
+            log("error happened");
+            mActivity.toast("error happened(" + what + "," + extra + ")");
+            mp.release();
+            mMediaPlayer = null;
+
+            return false;
+
+        }
+
+        @Override
+        public void onPrepared(MediaPlayer mp) {
+
+            mp.start();
+            mSeekBar.setMax(mMediaPlayer.getDuration());
+            btnPlay.setText(R.string.action_pause);
+            tvTotalTime.setText(formatTime(mMediaPlayer.getDuration()));
         }
     }
 
-    private static void log(String msg) {
+    private void toast(String msg) {
+        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+    }
+
+    private void log(String msg) {
         Log.e("MainActivity", msg);
     }
 }

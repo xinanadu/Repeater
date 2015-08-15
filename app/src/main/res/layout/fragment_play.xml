@@ -41,10 +41,31 @@
         android:layout_below="@+id/btn_set_as_end"
         android:text="@string/action_repeat_last_sentence" />
 
-    <ProgressBar
-        android:id="@+id/progressBar"
+    <SeekBar
+        android:id="@+id/seekBar"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"></SeekBar>
+
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true" />
+        android:layout_above="@+id/seekBar">
+
+        <TextView
+            android:id="@+id/tv_current_time"
+            android:layout_alignParentLeft="true"
+            android:layout_width="wrap_content"
+            android:text="@string/default_time"
+            android:layout_height="wrap_content" />
+
+
+        <TextView
+            android:id="@+id/tv_total_time"
+            android:layout_width="wrap_content"
+            android:text="@string/default_time"
+            android:layout_alignParentRight="true"
+            android:layout_height="wrap_content" />
+    </RelativeLayout>
 
 </RelativeLayout>
