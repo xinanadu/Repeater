@@ -11,63 +11,127 @@
     <TextView
         android:id="@+id/tv_current_item"
         android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:background="#dddddd"
-        android:padding="10dp"
-        android:layout_height="wrap_content" />
+        android:padding="10dp" />
 
-    <Button
-        android:id="@+id/btn_play"
+    <LinearLayout
+        android:id="@+id/layout_play"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@+id/tv_current_item"
-        android:text="@string/action_play" />
+        android:orientation="horizontal">
 
-    <Button
-        android:id="@+id/btn_set_as_start"
+        <Button
+            android:id="@+id/btn_play"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/btn_play"
+            android:layout_weight="1"
+            android:text="@string/action_play" />
+
+        <Button
+            android:id="@+id/btn_repeat_last_sentense"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/btn_set_as_end"
+            android:layout_weight="1"
+            android:singleLine="true"
+            android:text="@string/action_repeat_last_sentence" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/layout_set_piece"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@+id/btn_play"
-        android:text="@string/action_set_as_start" />
+        android:layout_below="@+id/layout_play"
+        android:orientation="horizontal">
 
-    <Button
-        android:id="@+id/btn_set_as_end"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_below="@+id/btn_set_as_start"
-        android:text="@string/action_set_as_end" />
+        <Button
+            android:id="@+id/btn_set_as_start"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/action_set_as_start" />
 
-    <Button
-        android:id="@+id/btn_repeat_last_sentense"
+
+        <Button
+            android:id="@+id/btn_set_as_end"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/action_set_as_end" />
+
+
+    </LinearLayout>
+
+    <ListView
+        android:id="@+id/listview_pieces"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_below="@+id/btn_set_as_end"
-        android:text="@string/action_repeat_last_sentence" />
+        android:layout_height="match_parent"
+        android:layout_below="@+id/layout_set_piece"></ListView>
+
+    <RelativeLayout
+        android:id="@+id/layout_set_new_piece"
+        android:visibility="invisible"
+        android:layout_width="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:id="@+id/tv_start_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentLeft="true"
+            android:text="@string/default_time" />
+
+
+        <TextView
+            android:id="@+id/tv_piece_time"
+            android:layout_width="100dp"
+            android:layout_height="1dp"
+            android:layout_centerVertical="true"
+            android:layout_marginLeft="3dp"
+            android:layout_marginRight="3dp"
+            android:layout_toRightOf="@+id/tv_start_time"
+            android:background="#333333" />
+
+        <TextView
+            android:id="@+id/tv_end_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_toRightOf="@id/tv_piece_time"
+            android:text="@string/default_time" />
+    </RelativeLayout>
+
 
     <SeekBar
         android:id="@+id/seekBar"
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"></SeekBar>
+        android:layout_width="match_parent"
+        android:layout_above="@+id/layout_set_new_piece"
+        android:layout_height="wrap_content"></SeekBar>
 
     <RelativeLayout
+        android:id="@+id/layout_seekbar_time"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_above="@+id/seekBar">
 
         <TextView
             android:id="@+id/tv_current_time"
-            android:layout_alignParentLeft="true"
             android:layout_width="wrap_content"
-            android:text="@string/default_time"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:layout_alignParentLeft="true"
+            android:text="@string/default_time" />
 
 
         <TextView
             android:id="@+id/tv_total_time"
             android:layout_width="wrap_content"
-            android:text="@string/default_time"
+            android:layout_height="wrap_content"
             android:layout_alignParentRight="true"
-            android:layout_height="wrap_content" />
+            android:text="@string/default_time" />
     </RelativeLayout>
+
 
 </RelativeLayout>

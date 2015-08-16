@@ -31,6 +31,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
+import android.widget.RelativeLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -413,11 +414,15 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         private Timer mTimer;
         private TimerTask mTimerTask;
         private SeekBar mSeekBar;
-        private TextView tvCurrentTime, tvTotalTime, tvCurrentItem;
-        private Button btnPlay;
+        private TextView tvCurrentTime, tvTotalTime, tvCurrentItem, tvPieceStart, tvPieceLength, tvPieceEnd;
+        private Button btnPlay, btnSetStart, btnSetEnd;
         private final int WHAT_UPDATE_POSITION = 101;
         private MainActivity mActivity;
         private String path;
+        private DBHelper mDBHelper;
+        private long pieceStartTime;
+        private int SCREEN_WIDTH;
+        private RelativeLayout layoutPiece;
 
         private Handler mHandler = new Handler() {
             @Override
@@ -428,6 +433,14 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
                         if (mSeekBar != null && mMediaPlayer != null && mMediaPlayer.isPlaying()) {
                             mSeekBar.setProgress(mMediaPlayer.getCurrentPosition());
                             tvCurrentTime.setText(formatTime(mMediaPlayer.getCurrentPosition()));
+                            if (pieceStartTime > 0) {
+                                if (tvPieceLength != null) {
+                                    int width = (int) (SCREEN_WIDTH * ((mMediaPlayer.getCurrentPosition() - pieceStartTime) * 1.00 / mMediaPlayer.getDuration()));
+                                    RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) tvPieceLength.getLayoutParams();
+                                    params.width = width;
+                                    tvPieceLength.setLayoutParams(params);
+                                }
+                            }
                         }
                         break;
                 }
@@ -451,6 +464,7 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         public void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
             mActivity = (MainActivity) getActivity();
+//            mDBHelper=new DBHelper(mActivity);
 
             mTimer = new Timer();
             mTimerTask = new TimerTask() {
@@ -467,6 +481,7 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         public View onCreateView(LayoutInflater inflater, ViewGroup container,
                                  Bundle savedInstanceState) {
             View rootView = inflater.inflate(R.layout.fragment_play, container, false);
+            SCREEN_WIDTH = mActivity.getResources().getDisplayMetrics().widthPixels;
             mSeekBar = (SeekBar) rootView.findViewById(R.id.seekBar);
             tvCurrentTime = (TextView) rootView.findViewById(R.id.tv_current_time);
             tvTotalTime = (TextView) rootView.findViewById(R.id.tv_total_time);
@@ -490,11 +505,49 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
                     }
                 }
             });
+            btnSetStart = (Button) rootView.findViewById(R.id.btn_set_as_start);
+            btnSetStart.setOnClickListener(new View.OnClickListener() {
+
+                @Override
+                public void onClick(View v) {
+                    if (mMediaPlayer != null && mMediaPlayer.isPlaying()) {
+                        pieceStartTime = mMediaPlayer.getCurrentPosition();
+                        tvPieceStart.setText(formatTime(pieceStartTime));
+                        tvPieceLength.setWidth(0);
+                        tvPieceEnd.setVisibility(View.GONE);
+
+                        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) layoutPiece.getLayoutParams();
+                        params.leftMargin = (int) (pieceStartTime * 1.00 / mMediaPlayer.getDuration() * SCREEN_WIDTH);
+                        layoutPiece.setLayoutParams(params);
+                        layoutPiece.setVisibility(View.VISIBLE);
+
+                    } else {
+                        mActivity.toast("clickable only when playing");
+                    }
+                }
+            });
+            btnSetEnd = (Button) rootView.findViewById(R.id.btn_set_as_end);
+            btnSetEnd.setOnClickListener(new View.OnClickListener() {
+
+                @Override
+                public void onClick(View v) {
+                    if (mMediaPlayer != null && mMediaPlayer.isPlaying()) {
+                        pieceStartTime = 0;
+                        tvPieceEnd.setText(formatTime(mMediaPlayer.getCurrentPosition()));
+                        tvPieceEnd.setVisibility(View.VISIBLE);
+                    }
+                }
+            });
+            tvPieceStart = (TextView) rootView.findViewById(R.id.tv_start_time);
+            tvPieceLength = (TextView) rootView.findViewById(R.id.tv_piece_time);
+            tvPieceEnd = (TextView) rootView.findViewById(R.id.tv_end_time);
+            layoutPiece = (RelativeLayout) rootView.findViewById(R.id.layout_set_new_piece);
             return rootView;
         }
 
         public void play(String path) {
             log("play(" + path + ")");
+            layoutPiece.setVisibility(View.INVISIBLE);
             this.path = path;
             resetViews();
             tvCurrentItem.setText(path);
@@ -568,6 +621,12 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
             mSeekBar.setMax(mMediaPlayer.getDuration());
             btnPlay.setText(R.string.action_pause);
             tvTotalTime.setText(formatTime(mMediaPlayer.getDuration()));
+        }
+
+        public void save(long start, long end, String path, String alias) {
+            if (mDBHelper != null) {
+
+            }
         }
     }
 
