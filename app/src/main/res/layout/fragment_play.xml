@@ -9,15 +9,17 @@
     tools:context=".MainActivity$PlaceholderFragment">
 
     <TextView
-        android:id="@+id/section_label"
-        android:layout_width="wrap_content"
+        android:id="@+id/tv_current_item"
+        android:layout_width="match_parent"
+        android:background="#dddddd"
+        android:padding="10dp"
         android:layout_height="wrap_content" />
 
     <Button
         android:id="@+id/btn_play"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@+id/section_label"
+        android:layout_below="@+id/tv_current_item"
         android:text="@string/action_play" />
 
     <Button

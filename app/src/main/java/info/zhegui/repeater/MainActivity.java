@@ -319,6 +319,8 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
             listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
                 @Override
                 public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                    String curPath = newPath;
+
                     String str = adapter.getItem(position);
                     String newDir = tvDir.getText().toString();
                     if (TextUtils.equals(str, UPWARD)) {
@@ -331,14 +333,18 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
                         if (TextUtils.equals(newDir, File.separator)) {
                             newPath = File.separator + str;
                         } else {
-                            newPath += File.separator + str;
+                            if (new File(newPath + File.separator + str).isDirectory())
+                                newPath += File.separator + str;
+
                         }
                     }
 
 
-                    if (newPath.toLowerCase().endsWith("mp3")) {
-                        if (fragmentPlay != null)
-                            fragmentPlay.play(newPath);
+                    if (TextUtils.equals(newPath, curPath)) {
+                        if (str.toLowerCase().endsWith("mp3")) {
+                            if (fragmentPlay != null)
+                                fragmentPlay.play(newPath + File.separator + str);
+                        }
                     } else {
                         updateDirList();
                     }
@@ -375,7 +381,7 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
             final File currentDir = new File(newPath);
             if (currentDir.isDirectory()) {
                 tvLoading.setVisibility(View.VISIBLE);
-                if (!threadLoading.isAlive()) {
+                if (threadLoading.getState() == Thread.State.NEW) {
                     threadLoading.start();
                 }
                 new Thread() {
@@ -407,7 +413,7 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         private Timer mTimer;
         private TimerTask mTimerTask;
         private SeekBar mSeekBar;
-        private TextView tvCurrentTime, tvTotalTime;
+        private TextView tvCurrentTime, tvTotalTime, tvCurrentItem;
         private Button btnPlay;
         private final int WHAT_UPDATE_POSITION = 101;
         private MainActivity mActivity;
@@ -464,6 +470,7 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
             mSeekBar = (SeekBar) rootView.findViewById(R.id.seekBar);
             tvCurrentTime = (TextView) rootView.findViewById(R.id.tv_current_time);
             tvTotalTime = (TextView) rootView.findViewById(R.id.tv_total_time);
+            tvCurrentItem = (TextView) rootView.findViewById(R.id.tv_current_item);
             btnPlay = (Button) rootView.findViewById(R.id.btn_play);
             btnPlay.setOnClickListener(new View.OnClickListener() {
 
@@ -490,12 +497,13 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
             log("play(" + path + ")");
             this.path = path;
             resetViews();
+            tvCurrentItem.setText(path);
             if (mMediaPlayer != null) {
-                if (mMediaPlayer.isPlaying()) mMediaPlayer.stop();
-                mMediaPlayer.release();
+                mMediaPlayer.reset();
+            } else {
+                mMediaPlayer = new MediaPlayer();
             }
             try {
-                mMediaPlayer = new MediaPlayer();
                 mMediaPlayer.setOnCompletionListener(this);
                 mMediaPlayer.setOnErrorListener(this);
                 mMediaPlayer.setOnPreparedListener(this);
