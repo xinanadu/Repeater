@@ -1,14 +1,14 @@
 package info.zhegui.repeater;
 
+import android.app.Notification;
+import android.app.PendingIntent;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
-import android.graphics.Color;
-import android.media.AudioManager;
-import android.media.MediaPlayer;
-import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
+import android.os.IBinder;
 import android.os.SystemClock;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentManager;
@@ -17,31 +17,13 @@ import android.support.v4.app.FragmentTransaction;
 import android.support.v4.view.ViewPager;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
-import android.text.Spannable;
-import android.text.SpannableString;
-import android.text.TextUtils;
-import android.text.style.ForegroundColorSpan;
 import android.util.Log;
-import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
-import android.widget.Button;
-import android.widget.ListView;
-import android.widget.RelativeLayout;
-import android.widget.SeekBar;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
-import java.net.URI;
-import java.util.Comparator;
 import java.util.Locale;
-import java.util.Timer;
-import java.util.TimerTask;
 
 public class MainActivity extends AppCompatActivity implements ActionBar.TabListener {
 
@@ -59,14 +41,47 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
      * The {@link ViewPager} that will host the section contents.
      */
     ViewPager mViewPager;
-    private static final int REQUEST_GET_CONTENT = 101;
-    private static SharedPreferences prefs;
-    private static FragmentList fragmentList;
-    private static FragmentPlay fragmentPlay;
+    protected SharedPreferences prefs;
+    protected FragmentList fragmentList;
+    protected FragmentPlay fragmentPlay;
+    MainService mService;
+    boolean mBound = false;
+
+
+    /**
+     * Defines callbacks for service binding, passed to bindService()
+     */
+    private ServiceConnection mConnection = new ServiceConnection() {
+
+        @Override
+        public void onServiceConnected(ComponentName className,
+                                       IBinder service) {
+            log("onServiceConnected()");
+            // We've bound to MainService, cast the IBinder and get LocalService instance
+            MainService.LocalBinder binder = (MainService.LocalBinder) service;
+            mService = binder.getService();
+            mBound = true;
+
+            mService.isActivityVisible = true;
+
+            mService.stopForeground(true);
+            fragmentPlay.updateViews();
+            if (mService.isMediaPlaying()) {
+                mViewPager.setCurrentItem(1);
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) {
+            log("onServiceDisconnected()");
+            mBound = false;
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        log("onCreate()");
         setContentView(R.layout.activity_main);
 
         prefs = getPreferences(MODE_PRIVATE);
@@ -107,8 +122,51 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        log("onStart()");
+
+        new Thread() {
+            @Override
+            public void run() {
+
+                startService(new Intent(MainActivity.this, MainService.class));
+                SystemClock.sleep(1000);
+
+                while (fragmentPlay == null || fragmentList == null) SystemClock.sleep(50);
+
+                // Bind to MainService
+                Intent intent = new Intent(MainActivity.this, MainService.class);
+                MainActivity.this.bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+                log("bindService()");
+            }
+        }.start();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        log("onStop()");
+
+        // Unbind from the service
+        if (mBound) {
+            mService.isActivityVisible = false;
+            if (!mService.isMediaPlaying()) {
+                stopService(new Intent(this, MainService.class));
+            } else {
+                startForeground();
+            }
+            unbindService(mConnection);
+            log("unbindService(" + mConnection + ")");
+            mBound = false;
+        }
+
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
+        log("onDestroy()");
     }
 
     @Override
@@ -197,444 +255,34 @@ public class MainActivity extends AppCompatActivity implements ActionBar.TabList
         }
     }
 
+    public void startForeground() {
+        if (mBound) {
+            String songName = new File(mService.path).getName();
+// assign the song name to songName
+            PendingIntent pi = PendingIntent.getActivity(getApplicationContext(), 0,
+                    new Intent(getApplicationContext(), MainActivity.class),
+                    PendingIntent.FLAG_UPDATE_CURRENT);
+            Notification notification = new Notification();
+//            notification.tickerText = text;
+            notification.icon = android.R.drawable.ic_media_play;
+            notification.flags |= Notification.FLAG_ONGOING_EVENT;
+            notification.setLatestEventInfo(getApplicationContext(), "MusicPlayerSample",
+                    "Playing: " + songName, pi);
+            mService.startForeground(mService.NOTIFICATION_ID, notification);
+        }
+    }
+
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
-        if (requestCode == REQUEST_GET_CONTENT) {
-            if (resultCode == RESULT_OK) {
-                Uri uri = intent.getData();
-                String type = intent.getType();
-//                LogHelper.i(TAG,"Pick completed: "+ uri + " "+type);
-                if (uri != null) {
-                    String path = uri.toString();
-                    if (path.toLowerCase().startsWith("file://")) {
-                        // Selected file/directory path is below
-                        path = (new File(URI.create(path))).getAbsolutePath();
-                    }
-
-                }
-            }
-
-        }
+    public void finish() {
+        super.finish();
     }
 
-    public static class FragmentList extends Fragment {
-        private final String LAST_PATH = "last_path", UPWARD = "..";
-        private final int WHAT_LOADING = 101, WHAT_DONE = 102;
-        private ArrayAdapter<String> adapter;
-        private TextView tvDir, tvCount, tvLoading;
-        private ListView listView;
-        private boolean isLoading = true;
-        private String newPath = File.separator;
-        private Thread threadLoading;
-        private MainActivity mActivity;
-
-        /**
-         * Returns a new instance of this fragment for the given section
-         * number.
-         */
-        public static FragmentList newInstance() {
-            FragmentList fragment = new FragmentList();
-            Bundle args = new Bundle();
-            fragment.setArguments(args);
-            return fragment;
-        }
-
-        public FragmentList() {
-        }
-
-        private Handler mHandler = new Handler() {
-            @Override
-            public void handleMessage(Message msg) {
-//                log("handlerMessage(" + msg + ")");
-                switch (msg.what) {
-                    case WHAT_DONE:
-                        String[] tempArr = (String[]) msg.obj;
-                        adapter.clear();
-                        //add the dot item to go to the upper folder
-                        if (!TextUtils.equals(newPath, File.separator)) {
-                            adapter.add(UPWARD);
-                        }
-                        for (int i = 0; tempArr != null && i < tempArr.length; i++) {
-                            String str = tempArr[i];
-                            adapter.add(str);
-                        }
-                        adapter.sort(new Comparator<String>() {
-                            @Override
-                            public int compare(String lhs, String rhs) {
-                                return lhs.compareTo(rhs);
-                            }
-                        });
-                        adapter.notifyDataSetChanged();
-                        tvLoading.setVisibility(View.GONE);
-
-                        prefs.edit().putString(LAST_PATH, newPath).commit();
-                        tvDir.setText(newPath);
-
-                        String strCount = adapter.getCount() + "";
-                        //exclude the dot item at position 0
-                        if (!TextUtils.equals(newPath, File.separator)) {
-                            strCount = (adapter.getCount() - 1) + "";
-                        }
-                        SpannableString spanString = new SpannableString(strCount);
-                        ForegroundColorSpan span = new ForegroundColorSpan(Color.BLACK);
-                        spanString.setSpan(span, 0, strCount.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                        tvCount.setText(spanString);
-                        tvCount.append("  items found");
-                        break;
-                    case WHAT_LOADING:
-                        String strLoading = "loading";
-                        for (int i = 0; i < msg.arg1; i++) {
-                            strLoading += ".";
-                        }
-//                        log(strLoading);
-                        tvLoading.setText(strLoading);
-                        break;
-                }
-            }
-        };
-
-        @Override
-        public void onCreate(Bundle savedInstanceState) {
-            super.onCreate(savedInstanceState);
-            mActivity = (MainActivity) getActivity();
-        }
-
-        @Override
-        public View onCreateView(LayoutInflater inflater, ViewGroup container,
-                                 Bundle savedInstanceState) {
-            View rootView = inflater.inflate(R.layout.fragment_list, container, false);
-            tvDir = (TextView) rootView.findViewById(R.id.tv_dir);
-            tvCount = (TextView) rootView.findViewById(R.id.tv_count);
-            tvLoading = (TextView) rootView.findViewById(R.id.tv_loading);
-            listView = (ListView) rootView.findViewById(R.id.listview);
-            tvDir.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    //write your own tiny file explorer
-                }
-            });
-
-
-            adapter = new ArrayAdapter<String>(getActivity(), android.R.layout.simple_list_item_1);
-            listView.setAdapter(adapter);
-            listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-                @Override
-                public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                    String curPath = newPath;
-
-                    String str = adapter.getItem(position);
-                    String newDir = tvDir.getText().toString();
-                    if (TextUtils.equals(str, UPWARD)) {
-                        int lastSlash = newDir.lastIndexOf(File.separator);
-                        if (lastSlash > 0)
-                            newPath = newDir.substring(0, lastSlash);
-                        else
-                            newPath = File.separator; //root directory
-                    } else {
-                        if (TextUtils.equals(newDir, File.separator)) {
-                            newPath = File.separator + str;
-                        } else {
-                            if (new File(newPath + File.separator + str).isDirectory())
-                                newPath += File.separator + str;
-
-                        }
-                    }
-
-
-                    if (TextUtils.equals(newPath, curPath)) {
-                        if (str.toLowerCase().endsWith("mp3")) {
-                            if (fragmentPlay != null)
-                                fragmentPlay.play(newPath + File.separator + str);
-                        }
-                    } else {
-                        updateDirList();
-                    }
-                }
-            });
-
-
-            threadLoading = new Thread() {
-                @Override
-                public void run() {
-                    int count = 0;
-                    while (isLoading) {
-                        Message msg = mHandler.obtainMessage(WHAT_LOADING, count++ % 6, 0);
-                        msg.sendToTarget();
-                        SystemClock.sleep(100);
-                    }
-                }
-            };
-
-            newPath = prefs.getString(LAST_PATH, File.separator);
-            updateDirList();
-
-            return rootView;
-        }
-
-        @Override
-        public void onDestroy() {
-            super.onDestroy();
-            isLoading = false;
-        }
-
-        private boolean updateDirList() {
-            log("updateDirList(" + newPath + ")");
-            final File currentDir = new File(newPath);
-            if (currentDir.isDirectory()) {
-                tvLoading.setVisibility(View.VISIBLE);
-                if (threadLoading.getState() == Thread.State.NEW) {
-                    threadLoading.start();
-                }
-                new Thread() {
-                    @Override
-                    public void run() {
-
-                        final String[] tempArr = currentDir.list();
-                        Message msg = mHandler.obtainMessage(WHAT_DONE, tempArr);
-                        msg.sendToTarget();
-
-                    }
-                }.start();
-
-
-                return true;
-            }
-            return false;
-        }
-
-        private void log(String msg) {
-            mActivity.log(msg);
-        }
-    }
-
-
-    public static class FragmentPlay extends Fragment implements MediaPlayer.OnPreparedListener, MediaPlayer.OnCompletionListener, MediaPlayer.OnErrorListener {
-
-        private MediaPlayer mMediaPlayer = null;
-        private Timer mTimer;
-        private TimerTask mTimerTask;
-        private SeekBar mSeekBar;
-        private TextView tvCurrentTime, tvTotalTime, tvCurrentItem, tvPieceStart, tvPieceLength, tvPieceEnd;
-        private Button btnPlay, btnSetStart, btnSetEnd;
-        private final int WHAT_UPDATE_POSITION = 101;
-        private MainActivity mActivity;
-        private String path;
-        private DBHelper mDBHelper;
-        private long pieceStartTime;
-        private int SCREEN_WIDTH;
-        private RelativeLayout layoutPiece;
-
-        private Handler mHandler = new Handler() {
-            @Override
-            public void handleMessage(Message msg) {
-//                log("handlerMessage(" + msg + ")");
-                switch (msg.what) {
-                    case WHAT_UPDATE_POSITION:
-                        if (mSeekBar != null && mMediaPlayer != null && mMediaPlayer.isPlaying()) {
-                            mSeekBar.setProgress(mMediaPlayer.getCurrentPosition());
-                            tvCurrentTime.setText(formatTime(mMediaPlayer.getCurrentPosition()));
-                            if (pieceStartTime > 0) {
-                                if (tvPieceLength != null) {
-                                    int width = (int) (SCREEN_WIDTH * ((mMediaPlayer.getCurrentPosition() - pieceStartTime) * 1.00 / mMediaPlayer.getDuration()));
-                                    RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) tvPieceLength.getLayoutParams();
-                                    params.width = width;
-                                    tvPieceLength.setLayoutParams(params);
-                                }
-                            }
-                        }
-                        break;
-                }
-            }
-        };
-
-        public static FragmentPlay newInstance() {
-            FragmentPlay fragment = new FragmentPlay();
-            Bundle args = new Bundle();
-            fragment.setArguments(args);
-
-
-            return fragment;
-        }
-
-        public FragmentPlay() {
-
-        }
-
-        @Override
-        public void onCreate(Bundle savedInstanceState) {
-            super.onCreate(savedInstanceState);
-            mActivity = (MainActivity) getActivity();
-//            mDBHelper=new DBHelper(mActivity);
-
-            mTimer = new Timer();
-            mTimerTask = new TimerTask() {
-                @Override
-                public void run() {
-                    Message msg = mHandler.obtainMessage(WHAT_UPDATE_POSITION);
-                    msg.sendToTarget();
-                }
-            };
-            mTimer.schedule(mTimerTask, 0, 200);
-        }
-
-        @Override
-        public View onCreateView(LayoutInflater inflater, ViewGroup container,
-                                 Bundle savedInstanceState) {
-            View rootView = inflater.inflate(R.layout.fragment_play, container, false);
-            SCREEN_WIDTH = mActivity.getResources().getDisplayMetrics().widthPixels;
-            mSeekBar = (SeekBar) rootView.findViewById(R.id.seekBar);
-            tvCurrentTime = (TextView) rootView.findViewById(R.id.tv_current_time);
-            tvTotalTime = (TextView) rootView.findViewById(R.id.tv_total_time);
-            tvCurrentItem = (TextView) rootView.findViewById(R.id.tv_current_item);
-            btnPlay = (Button) rootView.findViewById(R.id.btn_play);
-            btnPlay.setOnClickListener(new View.OnClickListener() {
-
-                @Override
-                public void onClick(View v) {
-                    if (mMediaPlayer != null) {
-                        if (mMediaPlayer.isPlaying()) {
-                            mMediaPlayer.pause();
-                            btnPlay.setText(R.string.action_play);
-                        } else {
-                            mMediaPlayer.start();
-                            btnPlay.setText(R.string.action_pause);
-                        }
-                    } else {
-                        play(path);
-                        btnPlay.setText(R.string.action_pause);
-                    }
-                }
-            });
-            btnSetStart = (Button) rootView.findViewById(R.id.btn_set_as_start);
-            btnSetStart.setOnClickListener(new View.OnClickListener() {
-
-                @Override
-                public void onClick(View v) {
-                    if (mMediaPlayer != null && mMediaPlayer.isPlaying()) {
-                        pieceStartTime = mMediaPlayer.getCurrentPosition();
-                        tvPieceStart.setText(formatTime(pieceStartTime));
-                        tvPieceLength.setWidth(0);
-                        tvPieceEnd.setVisibility(View.GONE);
-
-                        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) layoutPiece.getLayoutParams();
-                        params.leftMargin = (int) (pieceStartTime * 1.00 / mMediaPlayer.getDuration() * SCREEN_WIDTH);
-                        layoutPiece.setLayoutParams(params);
-                        layoutPiece.setVisibility(View.VISIBLE);
-
-                    } else {
-                        mActivity.toast("clickable only when playing");
-                    }
-                }
-            });
-            btnSetEnd = (Button) rootView.findViewById(R.id.btn_set_as_end);
-            btnSetEnd.setOnClickListener(new View.OnClickListener() {
-
-                @Override
-                public void onClick(View v) {
-                    if (mMediaPlayer != null && mMediaPlayer.isPlaying()) {
-                        pieceStartTime = 0;
-                        tvPieceEnd.setText(formatTime(mMediaPlayer.getCurrentPosition()));
-                        tvPieceEnd.setVisibility(View.VISIBLE);
-                    }
-                }
-            });
-            tvPieceStart = (TextView) rootView.findViewById(R.id.tv_start_time);
-            tvPieceLength = (TextView) rootView.findViewById(R.id.tv_piece_time);
-            tvPieceEnd = (TextView) rootView.findViewById(R.id.tv_end_time);
-            layoutPiece = (RelativeLayout) rootView.findViewById(R.id.layout_set_new_piece);
-            return rootView;
-        }
-
-        public void play(String path) {
-            log("play(" + path + ")");
-            layoutPiece.setVisibility(View.INVISIBLE);
-            this.path = path;
-            resetViews();
-            tvCurrentItem.setText(path);
-            if (mMediaPlayer != null) {
-                mMediaPlayer.reset();
-            } else {
-                mMediaPlayer = new MediaPlayer();
-            }
-            try {
-                mMediaPlayer.setOnCompletionListener(this);
-                mMediaPlayer.setOnErrorListener(this);
-                mMediaPlayer.setOnPreparedListener(this);
-                mMediaPlayer.setDataSource(path);
-                mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-                mMediaPlayer.prepareAsync();
-
-            } catch (Exception e) {
-                e.printStackTrace();
-                log("===>>>>" + e.getMessage());
-            }
-            mActivity.mViewPager.setCurrentItem(1);
-        }
-
-        private void resetViews() {
-            tvCurrentTime.setText(R.string.default_time);
-            tvTotalTime.setText(R.string.default_time);
-            btnPlay.setText(R.string.action_play);
-        }
-
-        @Override
-        public void onDestroy() {
-            super.onDestroy();
-            if (mMediaPlayer != null) {
-                mMediaPlayer.release();
-                mMediaPlayer = null;
-            }
-        }
-
-        private void log(String msg) {
-            mActivity.log(msg);
-        }
-
-        private String formatTime(long mm) {
-            int m = (int) mm / (60000);
-            int s = (int) (mm - m * 60000) / 1000;
-
-            return (m < 10 ? ("0" + m) : m) + ":" + (s < 10 ? ("0" + s) : s);
-//            return getResources().getString(R.string.default_time);
-        }
-
-        @Override
-        public void onCompletion(MediaPlayer mp) {
-            resetViews();
-        }
-
-        @Override
-        public boolean onError(MediaPlayer mp, int what, int extra) {
-            log("error happened");
-            mActivity.toast("error happened(" + what + "," + extra + ")");
-            mp.release();
-            mMediaPlayer = null;
-
-            return false;
-
-        }
-
-        @Override
-        public void onPrepared(MediaPlayer mp) {
-
-            mp.start();
-            mSeekBar.setMax(mMediaPlayer.getDuration());
-            btnPlay.setText(R.string.action_pause);
-            tvTotalTime.setText(formatTime(mMediaPlayer.getDuration()));
-        }
-
-        public void save(long start, long end, String path, String alias) {
-            if (mDBHelper != null) {
-
-            }
-        }
-    }
-
-    private void toast(String msg) {
+    protected void toast(String msg) {
         Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
     }
 
     private void log(String msg) {
         Log.e("MainActivity", msg);
     }
+
 }
